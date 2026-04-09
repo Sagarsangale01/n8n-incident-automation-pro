@@ -85,12 +85,13 @@ npm run mocks
 
 ## 🧪 Verification & Test Cases
 
-| Case | Scenario | Expected Result |
-| :--- | :--- | :--- |
-| **01** | **Standard Run** | All nodes finish Green; Slack/Email mocks receive data. |
-| **02** | **Deduplication** | 2nd run of same ID stops at **Acknowledge Duplicate**. |
-| **03** | **Retry Logic** | Node loops through **Backoff Wait** twice on 429 errors. |
-| **04** | **Max Failure** | After 5 retries, incident is logged to **failures.json**. |
+| Case | Scenario | Mock Injection ($env) | Expected Result |
+| :--- | :--- | :--- | :--- |
+| **01** | **Success** | `SLACK_FAIL_429_N=0`, `MS_FAIL_500_N=0` | All nodes Redundant Green. |
+| **02** | **Dedupe** | (Use same data as Case 01) | Stops at **Acknowledge Duplicate**. |
+| **03** | **Slack Retry** | `SLACK_FAIL_429_N=2` | Loops through **Backoff Wait** twice. |
+| **04** | **Email Retry** | `MS_FAIL_500_N=1` | Survives 500 error & succeeds on 2nd try. |
+| **05** | **Failure** | `SLACK_FAIL_500_N=10` | After 5 retries, logs to **failures.json**. |
 
 ---
 
