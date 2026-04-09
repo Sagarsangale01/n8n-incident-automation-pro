@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  retryCount: 0,\n  emailRetryCount: 0,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
+        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
       },
       "id": "normalize",
       "name": "Validate & Normalize",
@@ -72,7 +72,7 @@
       "typeVersion": 2,
       "position": [
         1100,
-        440
+        450
       ]
     },
     {
@@ -98,62 +98,12 @@
       "typeVersion": 4,
       "position": [
         1100,
-        240
+        340
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000,
       "onError": "oNode"
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json;\ninput.retryCount = (input.retryCount || 0) + 1;\nreturn input;"
-      },
-      "id": "inc-retry",
-      "name": "Increment Retry",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1100,
-        40
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.retryCount <= 5 }}",
-              "operation": "equal",
-              "value2": true
-            },
-            {
-              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Slack Notify'].json.statusCode) }}",
-              "operation": "equal",
-              "value2": true
-            }
-          ]
-        }
-      },
-      "id": "if-retry-slack",
-      "name": "Retry Slack?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        1320,
-        40
-      ]
-    },
-    {
-      "parameters": {
-        "amount": 2,
-        "unit": "seconds"
-      },
-      "id": "wait-slack",
-      "name": "Backoff Wait",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [
-        1540,
-        40
-      ]
     },
     {
       "parameters": {
@@ -178,62 +128,12 @@
       "typeVersion": 4,
       "position": [
         1340,
-        240
+        340
       ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000,
       "onError": "oNode"
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json;\ninput.emailRetryCount = (input.emailRetryCount || 0) + 1;\nreturn input;"
-      },
-      "id": "inc-retry-email",
-      "name": "Increment Email Retry",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1340,
-        -140
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.emailRetryCount <= 5 }}",
-              "operation": "equal",
-              "value2": true
-            },
-            {
-              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Send Email'].json.statusCode) }}",
-              "operation": "equal",
-              "value2": true
-            }
-          ]
-        }
-      },
-      "id": "if-retry-email",
-      "name": "Retry Email?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [
-        1560,
-        -140
-      ]
-    },
-    {
-      "parameters": {
-        "amount": 2,
-        "unit": "seconds"
-      },
-      "id": "wait-email",
-      "name": "Wait Email",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [
-        1780,
-        -140
-      ]
     },
     {
       "parameters": {
@@ -244,8 +144,8 @@
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1640,
-        240
+        1580,
+        340
       ]
     },
     {
@@ -257,7 +157,7 @@
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1640,
+        1580,
         540
       ]
     }
@@ -327,47 +227,7 @@
       "error": [
         [
           {
-            "node": "Increment Retry",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Increment Retry": {
-      "main": [
-        [
-          {
-            "node": "Retry Slack?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Retry Slack?": {
-      "main": [
-        [
-          {
-            "node": "Backoff Wait",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
             "node": "Persist Failure",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Backoff Wait": {
-      "main": [
-        [
-          {
-            "node": "Slack Notify",
             "type": "main",
             "index": 0
           }
@@ -387,47 +247,7 @@
       "error": [
         [
           {
-            "node": "Increment Email Retry",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Increment Email Retry": {
-      "main": [
-        [
-          {
-            "node": "Retry Email?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Retry Email?": {
-      "main": [
-        [
-          {
-            "node": "Wait Email",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
             "node": "Persist Failure",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Wait Email": {
-      "main": [
-        [
-          {
-            "node": "Send Email",
             "type": "main",
             "index": 0
           }

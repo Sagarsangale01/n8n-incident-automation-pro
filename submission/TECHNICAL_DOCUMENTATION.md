@@ -6,17 +6,15 @@ This "Production Grade" n8n workflow is designed to process incoming incident we
 
 ### Logic Diagram
 ```mermaid
-graph TD
+graph LR
     A[Webhook] --> B[Normalization]
     B --> C{Check Dedupe}
     C -->|Duplicate| D[Ack Duplicate]
     C -->|New| E[Slack Notify]
-    E --> F{Slack Retry?}
-    F -->|Success| G[Send Email]
-    F -->|Fail| H[Persist Error]
-    G --> J{Email Retry?}
-    J -->|Success| I[Mark Processed]
-    J -->|Fail| H
+    E --> F[Send Email]
+    F --> G[Mark Processed]
+    E -. Fail .-> H[Persist Error]
+    F -. Fail .-> H
 ```
 
 ### Logical Flow
@@ -24,11 +22,9 @@ graph TD
 2. **Normalize & Validate**: Enforces schema validation and converts severity labels to numeric levels.
 3. **Check Deduplication**: Verify if the incident has already been processed using a local state file.
    - **Formula**: `{{incidentId}}:{{severity}}:{{createdAt}}`
-4. **Slack Notification**: Attempt delivery to Slack.
-5. **Duo-Retry Loops**: Custom logic for both Slack and O365 to handle throttling (429) or server errors (5xx) with backoff and a 5-attempt limit.
-6. **Email Notification**: Delivery via Microsoft Graph API mock.
-7. **Post-Success Marking**: Only registers the incident as "processed" once both notifications are successfully triggered.
-8. **Failure Logging**: If retries fail at any stage, detailed incident data is persisted to a local JSON audit log.
+4. **Resilient Delivery**: Both Slack and O365 nodes use **n8n Native Built-in Retries** (5 attempts, 2s backoff) to handle transient 429 and 5xx errors.
+5. **Post-Success Marking**: Only registers the incident as "processed" once both notifications succeed.
+6. **Failure Logging**: If all 5 native retries fail, the node routes to **Persist Failure** to log the event for auditing.
 
 ---
 

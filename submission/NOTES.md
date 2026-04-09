@@ -26,13 +26,12 @@
 - **Truncation**: Incident descriptions are truncated to 240 chars for clean notification delivery.
 
 ### Reliability & Retries
-- **Mechanism**: **Dual Manual Loop Implementation** (Production Pattern).
-- **Nodes**: Separate loops for `Slack Notify` and `Send Email`.
-- **Triggers**: Only retries on **429** (Rate Limit) and **5xx** (Server Error). Ignores other 4xx errors as per requirements.
+- **Mechanism**: **n8n Native Built-in Retries** (Production Standard).
+- **Nodes**: Configured directly on the `Slack Notify` and `Send Email` nodes.
 - **Settings**:
     - **Max Attempts**: 5 per service.
-    - **Wait/Backoff**: 2-second delay between attempts using a `Wait` node.
-- **Benefit**: This manual approach handles multi-service failure independently, ensuring one service's failure doesn't block the other's retry path.
+    - **Wait/Backoff**: 2-second delay between attempts.
+- **Benefit**: This native approach keeps the workflow canvas clean and highly readable while utilizing n8n's resilient internal execution engine to handle transient server errors.
 
 ### Idempotency & Deduplication
 - **DedupeKey Formula**: `incidentId:severity:createdAt`
