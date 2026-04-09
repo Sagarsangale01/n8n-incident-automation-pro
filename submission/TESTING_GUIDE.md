@@ -3,10 +3,10 @@
 This guide provides exact commands and expected results to verify the production-grade features of the Incident Workflow.
 
 ## 🧹 Initial Cleanup
-Reset your local environment to ensure a clean test state:
+Reset your local environment by deleting only the temporary log files:
 ```powershell
-Remove-Item submission/*.log -ErrorAction SilentlyContinue
-Remove-Item submission/*.json -ErrorAction SilentlyContinue
+Remove-Item submission/processed_ids.log -ErrorAction SilentlyContinue
+Remove-Item submission/failures.json -ErrorAction SilentlyContinue
 ```
 
 ---
