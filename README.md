@@ -101,4 +101,4 @@ npm run mocks
 ---
 
 ## ✒️ Author Notes
-This implementation prioritize **offline safety**. We use filesystem-based state checks (`processed_ids.log`) to ensure the deduplication logic remains functional even in n8n's "Test Mode" where internal memory is reset between runs.
+This implementation prioritizes **offline safety**. We use filesystem-based state checks (`processed_ids.log`) to ensure the deduplication logic remains functional even in n8n's "Test Mode" where internal memory is reset between runs.

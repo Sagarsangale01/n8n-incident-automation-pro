@@ -79,7 +79,39 @@ curl.exe -X POST http://localhost:5678/webhook-test/incident -H \"Content-Type: 
 
 ---
 
-## 5. Artifacts Produced
+## 6. Sample Payload (Input Schema)
+
+The workflow expects a JSON payload matching the following schema (as seen in `fixtures/incidents/`):
+
+```json
+{
+  "incidentId": "INC-10001",
+  "severity": "P2",
+  "sourceSystem": "ServiceDesk",
+  "title": "Search latency elevated",
+  "description": "Search API p95 latency increased above 2s in multiple regions. Investigating upstream cache.",
+  "createdAt": "2026-02-25T17:20:00Z",
+  "storeId": "S-0192",
+  "ownerEmail": "oncall@example.com",
+  "metadata": {
+    "correlationId": "corr-10001",
+    "tags": ["search", "latency"]
+  }
+}
+```
+
+## 7. Expected Mock Responses
+
+When notifications are successful, the mocks return the following:
+
+| Service | HTTP Status | Response Body |
+| :--- | :--- | :--- |
+| **Slack Mock** | 200 OK | `{"ok": true, "channel": "#oncall-alerts", ...}` |
+| **O365 Email Mock** | 202 Accepted | *(No body content)* |
+
+---
+
+## 8. Artifacts Produced
 - **`submission/workflow.json`**: The final production-grade n8n export.
 - **`submission/processed_ids.log`**: State file for deduplication.
 - **`submission/failures.json`**: JSON audit log for incidents that failed delivery.
