@@ -1,0 +1,17 @@
+{
+  "incidentId": "INC-10001",
+  "severity": "P2",
+  "sourceSystem": "ServiceDesk",
+  "title": "Search latency elevated",
+  "description": "Search API p95 latency increased above 2s in multiple regions. Investigating upstream cache.",
+  "createdAt": "2026-02-25T17:20:00Z",
+  "storeId": "S-0192",
+  "ownerEmail": "oncall@example.com",
+  "metadata": {
+    "correlationId": "corr-10001",
+    "tags": [
+      "search",
+      "latency"
+    ]
+  }
+}

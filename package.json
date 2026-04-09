@@ -1,0 +1,16 @@
+{
+  "name": "n8n-offline-candidate-eval-kit",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "mocks": "node mocks/run-mocks.js",
+    "demo": "node tools/demo-send.js",
+    "test": "node --test",
+    "check-workflow": "node tools/check-workflow.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "body-parser": "^1.20.2",
+    "uuid": "^9.0.1"
+  }
+}

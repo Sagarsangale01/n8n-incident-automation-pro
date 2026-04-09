@@ -1,0 +1,120 @@
+{
+  "name": "Offline Incident Notifier (Skeleton)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "incident",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const incident = $json;\n// TODO: validate + normalize\nreturn [{ json: incident }];\n"
+      },
+      "id": "2",
+      "name": "Normalize Incident",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4010/chat.postMessage",
+        "method": "POST",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer slack-test-token"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"channel\": \"#oncall-alerts\",\n  \"text\": \"TODO\"\n}"
+      },
+      "id": "3",
+      "name": "Slack Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4020/me/sendMail",
+        "method": "POST",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer ms-test-token"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"message\": {\n    \"subject\": \"TODO\",\n    \"body\": {\"contentType\": \"Text\", \"content\": \"TODO\"},\n    \"toRecipients\": [{\"emailAddress\": {\"address\": \"TODO\"}}]\n  },\n  \"saveToSentItems\": false\n}"
+      },
+      "id": "4",
+      "name": "O365 Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        720,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Incident": {
+      "main": [
+        [
+          {
+            "node": "Slack Notify",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "O365 Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "skeleton-1"
+}

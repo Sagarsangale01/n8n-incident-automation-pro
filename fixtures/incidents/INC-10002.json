@@ -1,0 +1,17 @@
+{
+  "incidentId": "INC-10002",
+  "severity": "P1",
+  "sourceSystem": "Monitoring",
+  "title": "Checkout failures in region",
+  "description": "Spike in 5xx responses for checkout. Impacting conversion. Suspect dependency outage.",
+  "createdAt": "2026-02-25T18:05:00Z",
+  "storeId": "S-0010",
+  "ownerEmail": "checkout-oncall@example.com",
+  "metadata": {
+    "correlationId": "corr-10002",
+    "tags": [
+      "checkout",
+      "errors"
+    ]
+  }
+}

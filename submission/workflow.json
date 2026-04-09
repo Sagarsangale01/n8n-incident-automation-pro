@@ -1,0 +1,345 @@
+{
+  "name": "Incident Workflow - Production Grade",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "incident",
+        "httpMethod": "POST"
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  retryCount: 0,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
+      },
+      "id": "normalize",
+      "name": "Validate & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=powershell -Command \"$path = 'submission/processed_ids.log'; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; if (Test-Path $path) { if (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet) { write-output '{\\\"duplicate\\\": true}' } else { write-output '{\\\"duplicate\\\": false}' } } else { write-output '{\\\"duplicate\\\": false}' }\""
+      },
+      "id": "check-dedupe",
+      "name": "Check Deduplication",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        650,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ JSON.parse($json.stdout).duplicate }}",
+              "operation": "equal",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "id": "if-not-duplicate",
+      "name": "Not Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        850,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return { status: \"Duplicate incident ignored\", dedupeKey: $node[\"Validate & Normalize\"].json.dedupeKey };"
+      },
+      "id": "ack-duplicate",
+      "name": "Acknowledge Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4010/chat.postMessage",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer slack-test-token"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"channel\": \"#oncall-alerts\", \"text\": \"{{ $node['Validate & Normalize'].json.message }}\" }"
+      },
+      "id": "slack",
+      "name": "Slack Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1100,
+        240
+      ],
+      "onError": "oNode"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json;\ninput.retryCount = (input.retryCount || 0) + 1;\nreturn input;"
+      },
+      "id": "inc-retry",
+      "name": "Increment Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.retryCount <= 5 }}",
+              "operation": "equal",
+              "value2": true
+            },
+            {
+              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Slack Notify'].json.statusCode) }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-retry-slack",
+      "name": "Retry Slack?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-slack",
+      "name": "Backoff Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:4020/me/sendMail",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer ms-test-token"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"message\": { \"subject\": \"Incident Alert\", \"body\": { \"contentType\": \"Text\", \"content\": \"{{ $node['Validate & Normalize'].json.message }}\" }, \"toRecipients\": [{ \"emailAddress\": { \"address\": \"{{ $node['Validate & Normalize'].json.ownerEmail || 'test@example.com' }}\" }}] } }"
+      },
+      "id": "email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        240
+      ],
+      "onError": "oNode"
+    },
+    {
+      "parameters": {
+        "command": "=powershell -Command \"$path = 'submission/processed_ids.log'; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; Add-Content -Path $path -Value $key;\""
+      },
+      "id": "mark-processed",
+      "name": "Mark Processed",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=powershell -Command \"$path = 'submission/failures.json'; if (!(Test-Path $path)) { '[]' | Out-File -FilePath $path -Encoding UTF8 }; [array]$data = @(Get-Content $path | ConvertFrom-Json); $newEntry = @{ incidentId = '{{ $node['Validate & Normalize'].json.incidentId }}'; error = '{{ $json.message || 'Unknown' }}'; timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ') }; $data += $newEntry; $data | ConvertTo-Json | Out-File -FilePath $path -Encoding UTF8;\""
+      },
+      "id": "log-failure",
+      "name": "Persist Failure",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        540
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Check Deduplication",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Deduplication": {
+      "main": [
+        [
+          {
+            "node": "Not Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Not Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Slack Notify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acknowledge Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Notify": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Increment Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry": {
+      "main": [
+        [
+          {
+            "node": "Retry Slack?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Slack?": {
+      "main": [
+        [
+          {
+            "node": "Backoff Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Persist Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff Wait": {
+      "main": [
+        [
+          {
+            "node": "Slack Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Mark Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "error": [
+        [
+          {
+            "node": "Persist Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

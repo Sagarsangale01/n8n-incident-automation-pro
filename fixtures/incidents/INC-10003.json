@@ -1,0 +1,15 @@
+{
+  "incidentId": "INC-10003",
+  "severity": "P3",
+  "sourceSystem": "ServiceDesk",
+  "title": "Missing field example",
+  "description": "This fixture is intentionally missing createdAt to test validation.",
+  "storeId": "S-0200",
+  "ownerEmail": "oncall@example.com",
+  "metadata": {
+    "correlationId": "corr-10003",
+    "tags": [
+      "validation"
+    ]
+  }
+}
