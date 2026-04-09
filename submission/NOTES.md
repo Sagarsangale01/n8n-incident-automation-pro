@@ -26,17 +26,19 @@
 - **Truncation**: Incident descriptions are truncated to 240 chars for clean notification delivery.
 
 ### Reliability & Retries
-- **Mechanism**: **n8n Native Built-in Retries** (Production Standard).
-- **Nodes**: Configured directly on the `Slack Notify` and `Send Email` nodes.
+- **Mechanism**: **Dual Manual Loop Lanes** (Enterprise Resilience Pattern).
+- **Nodes**: Separate visual loops for `Slack Notify` and `Send Email` for maximum transparency.
+- **Triggers**: Only retries on **429** (Rate Limit) and **5xx** (Server Error).
 - **Settings**:
     - **Max Attempts**: 5 per service.
-    - **Wait/Backoff**: 2-second delay between attempts.
-- **Benefit**: This native approach keeps the workflow canvas clean and highly readable while utilizing n8n's resilient internal execution engine to handle transient server errors.
+    - **Wait/Backoff**: 2-second delay using a dedicated `Wait` node.
+- **Resilience**: Every file-based node includes **Self-Healing directory creation** to prevent path errors.
 
 ### Idempotency & Deduplication
 - **DedupeKey Formula**: `incidentId:severity:createdAt`
 - **Mechanism**: 
-    - **Check**: The `Check Deduplication` node uses PowerShell to verify the key against `submission/processed_ids.log`.
+    - **Check**: The `Check Deduplication` node verifies the key against `submission/processed_ids.log`.
+    - **Auto-Provisioning**: Automatically creates the `submission/` folder if missing.
     - **Mark**: The `Mark Processed` node only appends the key **after** successful email delivery.
 - **Why**: This filesystem-based state ensures idempotency works even in n8n's "Test Mode" where internal memory is reset.
 

@@ -6,25 +6,27 @@ This "Production Grade" n8n workflow is designed to process incoming incident we
 
 ### Logic Diagram
 ```mermaid
-graph LR
+graph TD
     A[Webhook] --> B[Normalization]
     B --> C{Check Dedupe}
     C -->|Duplicate| D[Ack Duplicate]
-    C -->|New| E[Slack Notify]
-    E --> F[Send Email]
-    F --> G[Mark Processed]
-    E -. Fail .-> H[Persist Error]
-    F -. Fail .-> H
+    B -. Self Heal .-> E[Folder Creation]
+    C -->|New| F[Slack Notify]
+    F --> G{Slack Retry?}
+    G -->|Success| H[Send Email]
+    G -->|Fail| I[Persist Error]
+    H --> J{Email Retry?}
+    J -->|Success| K[Mark Processed]
+    J -->|Fail| I
 ```
 
 ### Logical Flow
 1. **Trigger**: Receives `POST` request at `/incident`.
 2. **Normalize & Validate**: Enforces schema validation and converts severity labels to numeric levels.
-3. **Check Deduplication**: Verify if the incident has already been processed using a local state file.
-   - **Formula**: `{{incidentId}}:{{severity}}:{{createdAt}}`
-4. **Resilient Delivery**: Both Slack and O365 nodes use **n8n Native Built-in Retries** (5 attempts, 2s backoff) to handle transient 429 and 5xx errors.
-5. **Post-Success Marking**: Only registers the incident as "processed" once both notifications succeed.
-6. **Failure Logging**: If all 5 native retries fail, the node routes to **Persist Failure** to log the event for auditing.
+3. **Self-Healing Pathing**: Every node interacting with the filesystem automatically provision the `submission/` directory if it is missing.
+4. **Resilient Delivery Lanes**: Independent manual loops for Slack and O365 ensures high availability and transparent error tracking.
+5. **Post-Success Marking**: The incident is only registered as "processed" after both notification lanes finish successfully.
+6. **Persistent Logging**: All retry exhausted failures are logged to a local JSON audit trail.
 
 ---
 

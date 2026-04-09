@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
+        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  retryCount: 0,\n  emailRetryCount: 0,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
       },
       "id": "normalize",
       "name": "Validate & Normalize",
@@ -30,14 +30,14 @@
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$path = 'submission/processed_ids.log'; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; if (Test-Path $path) { if (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet) { write-output '{\\\"duplicate\\\": true}' } else { write-output '{\\\"duplicate\\\": false}' } } else { write-output '{\\\"duplicate\\\": false}' }\""
+        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/processed_ids.log\\\"; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; if (Test-Path $path) { if (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet) { write-output '{\\\"duplicate\\\": true}' } else { write-output '{\\\"duplicate\\\": false}' } } else { write-output '{\\\"duplicate\\\": false}' }\""
       },
       "id": "check-dedupe",
       "name": "Check Deduplication",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        650,
+        680,
         340
       ]
     },
@@ -58,7 +58,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        850,
+        900,
         340
       ]
     },
@@ -71,8 +71,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1100,
-        450
+        900,
+        540
       ]
     },
     {
@@ -97,13 +97,63 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        1100,
+        1150,
         340
       ],
-      "retryOnFail": true,
-      "maxTries": 5,
-      "waitBetweenTries": 2000,
       "onError": "oNode"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json;\ninput.retryCount = (input.retryCount || 0) + 1;\nreturn input;"
+      },
+      "id": "inc-retry",
+      "name": "Increment Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1150,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.retryCount <= 5 }}",
+              "operation": "equal",
+              "value2": true
+            },
+            {
+              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Slack Notify'].json.statusCode) }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-retry-slack",
+      "name": "Retry Slack?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-slack",
+      "name": "Backoff Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1550,
+        140
+      ]
     },
     {
       "parameters": {
@@ -127,38 +177,88 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        1340,
+        1400,
         340
       ],
-      "retryOnFail": true,
-      "maxTries": 5,
-      "waitBetweenTries": 2000,
       "onError": "oNode"
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$path = 'submission/processed_ids.log'; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; Add-Content -Path $path -Value $key;\""
+        "jsCode": "const input = $json;\ninput.emailRetryCount = (input.emailRetryCount || 0) + 1;\nreturn input;"
+      },
+      "id": "inc-retry-email",
+      "name": "Increment Email Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.emailRetryCount <= 5 }}",
+              "operation": "equal",
+              "value2": true
+            },
+            {
+              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Send Email'].json.statusCode) }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-retry-email",
+      "name": "Retry Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-email",
+      "name": "Wait Email",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/processed_ids.log\\\"; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; Add-Content -Path $path -Value $key;\""
       },
       "id": "mark-processed",
       "name": "Mark Processed",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1580,
+        1700,
         340
       ]
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$path = 'submission/failures.json'; if (!(Test-Path $path)) { '[]' | Out-File -FilePath $path -Encoding UTF8 }; [array]$data = @(Get-Content $path | ConvertFrom-Json); $newEntry = @{ incidentId = '{{ $node['Validate & Normalize'].json.incidentId }}'; error = '{{ $json.message || 'Unknown' }}'; timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ') }; $data += $newEntry; $data | ConvertTo-Json | Out-File -FilePath $path -Encoding UTF8;\""
+        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/failures.json\\\"; if (!(Test-Path $path)) { '[]' | Out-File -FilePath $path -Encoding UTF8 }; [array]$data = @(Get-Content $path | ConvertFrom-Json); $newEntry = @{ incidentId = '{{ $node['Validate & Normalize'].json.incidentId }}'; error = '{{ $json.message || 'Unknown' }}'; timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ') }; $data += $newEntry; $data | ConvertTo-Json | Out-File -FilePath $path -Encoding UTF8;\""
       },
       "id": "log-failure",
       "name": "Persist Failure",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1580,
-        540
+        1800,
+        740
       ]
     }
   ],
@@ -227,7 +327,47 @@
       "error": [
         [
           {
+            "node": "Increment Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry": {
+      "main": [
+        [
+          {
+            "node": "Retry Slack?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Slack?": {
+      "main": [
+        [
+          {
+            "node": "Backoff Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Persist Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backoff Wait": {
+      "main": [
+        [
+          {
+            "node": "Slack Notify",
             "type": "main",
             "index": 0
           }
@@ -247,7 +387,47 @@
       "error": [
         [
           {
+            "node": "Increment Email Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Email Retry": {
+      "main": [
+        [
+          {
+            "node": "Retry Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Email?": {
+      "main": [
+        [
+          {
+            "node": "Wait Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Persist Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
             "type": "main",
             "index": 0
           }

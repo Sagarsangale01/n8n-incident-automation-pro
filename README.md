@@ -39,11 +39,11 @@ Incoming payloads are validated in the **Validate & Normalize** node. It ensures
 - **Check**: Before notifying, it checks `submission/processed_ids.log`.
 - **Action**: If a duplicate is found, it terminates at the **Acknowledge Duplicate** node.
 
-### 3. Reliability (Native Retries)
-The workflow utilizes **n8n Native Built-in Retries** for both Slack and O365:
-- **Resilience**: Automatically retries 5 times with a 2-second backoff.
-- **Circuit Breaker**: Stops execution and logs to `failures.json` if all retries fail.
-- **Cleanliness**: Keeps the canvas clean and readable without extra manual loop nodes.
+### 3. Reliability (Manual Retry Lanes)
+Instead of relying on hidden settings, the workflow uses high-visibility **Manual Retry Loops**:
+- **Independent Lanes**: Slack and Email have separate retry paths to ensure one doesn't block the other.
+- **Resilient Paths**: All nodes use **Self-Healing directory logic** to prevent file errors.
+- **Circuit Breaker**: Stops after 5 attempts and logs failures to `failures.json`.
 
 ---
 
