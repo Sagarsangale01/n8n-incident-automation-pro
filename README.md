@@ -12,6 +12,7 @@ A professional, offline-first incident notification system built with n8n. This 
 * [Core Features](#-core-features)
 * [Workflow Architecture](#-workflow-architecture)
 * [Technical Documentation](#-technical-documentation)
+* [Step-by-Step Testing Guide](#-step-by-step-testing-guide)
 * [Getting Started](#-getting-started)
 * [Verification & Test Cases](#-verification--test-cases)
 * [Project Structure](#-project-structure)
@@ -49,6 +50,13 @@ Incoming payloads are validated in the **Validate & Normalize** node. It ensures
 For a deep dive into the node-level design and implementation logic, please refer to:
 * 📘 **[Technical Documentation](submission/TECHNICAL_DOCUMENTATION.md)**: Architecture diagrams and node breakdown.
 * 📝 **[Implementation Notes](submission/NOTES.md)**: Dedupe formulas and retry settings.
+
+---
+
+## 🚀 Step-by-Step Testing Guide
+
+To verify the "Production Grade" features of this workflow (Normalization, Deduplication, Retries, and Error Logging), please follow our:
+* 🧪 **[Detailed Testing Guide](submission/TESTING_GUIDE.md)**
 
 ---
 
