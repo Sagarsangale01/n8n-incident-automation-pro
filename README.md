@@ -44,6 +44,7 @@ Instead of relying on hidden settings, the workflow uses high-visibility **Manua
 - **Independent Lanes**: Slack and Email have separate retry paths to ensure one doesn't block the other.
 - **Resilient Paths**: All nodes use **Self-Healing directory logic** to prevent file errors.
 - **Circuit Breaker**: Stops after 5 attempts and logs failures to `failures.json`.
+- **Portability**: Deduplication and failure logging are implemented with Node.js commands inside `Execute Command` nodes (cross-platform), not PowerShell.
 
 ---
 
@@ -79,6 +80,8 @@ $env:SLACK_FAIL_429_N=2
 npm run mocks
 ```
 
+If you hit JSON quoting issues with `curl.exe` in PowerShell, prefer `Invoke-RestMethod` (see `submission/TECHNICAL_DOCUMENTATION.md`).
+
 ### 3. Workflow Import
 - Export your n8n workflow as a JSON file or use the provided **[workflow.json](submission/workflow.json)**.
 - Import it into n8n and set the Webhook path to `incident`.
@@ -103,7 +106,8 @@ npm run mocks
 │   ├── workflow.json           # Main n8n Production Workflow
 │   ├── TECHNICAL_DOCUMENTATION.md # Design & Node architecture
 │   ├── NOTES.md                # Implementation & Dedupe logic
-│   └── failures.json           # Local failure audit log
+│   ├── processed_ids.log       # Created at runtime (dedupe state)
+│   └── failures.json           # Created at runtime (failure audit log)
 ├── fixtures/                   # Sample incident payloads
 ├── mocks/                      # Offline API mock servers
 └── README.md                   # Project landing page

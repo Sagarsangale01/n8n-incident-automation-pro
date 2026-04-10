@@ -1,5 +1,5 @@
 {
-  "name": "Incident Workflow - Production Grade",
+  "name": "Incident Workflow - Production Grade (Fixed)",
   "nodes": [
     {
       "parameters": {
@@ -10,36 +10,27 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        200,
-        340
-      ]
+      "position": [200, 340]
     },
     {
       "parameters": {
-        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) {\n    throw new Error(`Missing required field: ${field}`);\n  }\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\n\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  retryCount: 0,\n  emailRetryCount: 0,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
+        "jsCode": "const incident = $json.body || $json;\n\nconst required = ['incidentId', 'severity', 'title', 'createdAt'];\nfor (const field of required) {\n  if (!incident[field]) throw new Error(`Missing required field: ${field}`);\n}\n\nconst severityMap = { P1: 1, P2: 2, P3: 3, P4: 4 };\nconst severityLevel = severityMap[incident.severity];\nif (!severityLevel) throw new Error('Invalid severity');\n\nconst description = (incident.description || '').substring(0, 240);\nconst dedupeKey = `${incident.incidentId}:${incident.severity}:${incident.createdAt}`;\n\nreturn {\n  ...incident,\n  severityLevel,\n  description,\n  dedupeKey,\n  retryCount: 0,\n  emailRetryCount: 0,\n  message: `[${incident.severity}] ${incident.title}\\nIncident ID: ${incident.incidentId}\\nTime: ${incident.createdAt}\\n${description}`\n};"
       },
       "id": "normalize",
       "name": "Validate & Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        450,
-        340
-      ]
+      "position": [450, 340]
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/processed_ids.log\\\"; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; if (Test-Path $path) { if (Select-String -Path $path -Pattern ([regex]::Escape($key)) -Quiet) { write-output '{\\\"duplicate\\\": true}' } else { write-output '{\\\"duplicate\\\": false}' } } else { write-output '{\\\"duplicate\\\": false}' }\""
+        "command": "=node -e \"const fs=require('fs');const p=require('path');const dir='submission';if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const file=p.join(dir,'processed_ids.log');const key='{{ $node['Validate & Normalize'].json.dedupeKey }}';let duplicate=false;if(fs.existsSync(file)){duplicate=fs.readFileSync(file,'utf8').split(/\\r?\\n/).includes(key);}process.stdout.write(JSON.stringify({duplicate}));\""
       },
       "id": "check-dedupe",
       "name": "Check Deduplication",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        680,
-        340
-      ]
+      "position": [680, 340]
     },
     {
       "parameters": {
@@ -57,23 +48,17 @@
       "name": "Not Duplicate?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        900,
-        340
-      ]
+      "position": [900, 340]
     },
     {
       "parameters": {
-        "jsCode": "return { status: \"Duplicate incident ignored\", dedupeKey: $node[\"Validate & Normalize\"].json.dedupeKey };"
+        "jsCode": "return { status: 'Duplicate ignored', dedupeKey: $node['Validate & Normalize'].json.dedupeKey };"
       },
       "id": "ack-duplicate",
       "name": "Acknowledge Duplicate",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        900,
-        540
-      ]
+      "position": [900, 540]
     },
     {
       "parameters": {
@@ -85,47 +70,64 @@
             {
               "name": "Authorization",
               "value": "Bearer slack-test-token"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{ \"channel\": \"#oncall-alerts\", \"text\": \"{{ $node['Validate & Normalize'].json.message }}\" }"
+        "jsonBody": "={{ { channel: '#oncall-alerts', text: $node['Validate & Normalize'].json.message } }}"
       },
       "id": "slack",
       "name": "Slack Notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [
-        1150,
-        340
-      ],
-      "onError": "oNode"
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json;\ninput.retryCount = (input.retryCount || 0) + 1;\nreturn input;"
-      },
-      "id": "inc-retry",
-      "name": "Increment Retry",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1150,
-        140
-      ]
+      "position": [1150, 340],
+      "onError": "oNode",
+      "continueOnFail": true
     },
     {
       "parameters": {
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.retryCount <= 5 }}",
+              "value1": "={{ (() => {\n  const code = Number(\n    $json.statusCode ??\n    $json.httpCode ??\n    $json.errorDetails?.httpCode ??\n    $json.error?.statusCode ??\n    $json.error?.httpCode ??\n    0\n  );\n  const slackOk = ($json.body && typeof $json.body === 'object') ? $json.body.ok : undefined;\n  const hasExplicitFailure = slackOk === false || Boolean($json.errorMessage || $json.errorDescription || $json.errorDetails);\n  return hasExplicitFailure || [429,500,502,503,504].includes(code);\n})() }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-slack-retry-needed",
+      "name": "Slack Retry Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1350, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "const incident = $node['Validate & Normalize'].json;\n\nconst lastHttpCodeRaw =\n  $json?.errorDetails?.httpCode ??\n  $json?.httpCode ??\n  $json?.statusCode ??\n  $json?.error?.statusCode ??\n  $json?.error?.httpCode ??\n  null;\n\nconst lastHttpCode = lastHttpCodeRaw == null ? null : Number(lastHttpCodeRaw);\n\nreturn {\n  ...incident,\n  // Deterministic retry counter when coming from error output\n  retryCount: $runIndex + 1,\n  emailRetryCount: 0,\n  lastHttpCode\n};"
+      },
+      "id": "inc-retry",
+      "name": "Increment Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1150, 140]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.retryCount < 5 }}",
               "operation": "equal",
               "value2": true
             },
             {
-              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Slack Notify'].json.statusCode) }}",
+              "value1": "={{ [429,500,502,503,504].includes(Number($json.lastHttpCode || 0)) }}",
               "operation": "equal",
               "value2": true
             }
@@ -136,24 +138,18 @@
       "name": "Retry Slack?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        1350,
-        140
-      ]
+      "position": [1350, 140]
     },
     {
       "parameters": {
-        "amount": 2,
+        "amount": "={{ Math.min(Math.pow(2, $json.retryCount), 30) }}",
         "unit": "seconds"
       },
       "id": "wait-slack",
       "name": "Backoff Wait",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [
-        1550,
-        140
-      ]
+      "position": [1550, 140]
     },
     {
       "parameters": {
@@ -165,47 +161,64 @@
             {
               "name": "Authorization",
               "value": "Bearer ms-test-token"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{ \"message\": { \"subject\": \"Incident Alert\", \"body\": { \"contentType\": \"Text\", \"content\": \"{{ $node['Validate & Normalize'].json.message }}\" }, \"toRecipients\": [{ \"emailAddress\": { \"address\": \"{{ $node['Validate & Normalize'].json.ownerEmail || 'test@example.com' }}\" }}] } }"
+        "jsonBody": "={{ { message: { subject: 'Incident Alert', body: { contentType: 'Text', content: $node['Validate & Normalize'].json.message }, toRecipients: [{ emailAddress: { address: $node['Validate & Normalize'].json.ownerEmail } }] } } }}"
       },
       "id": "email",
       "name": "Send Email",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [
-        1400,
-        340
-      ],
-      "onError": "oNode"
-    },
-    {
-      "parameters": {
-        "jsCode": "const input = $json;\ninput.emailRetryCount = (input.emailRetryCount || 0) + 1;\nreturn input;"
-      },
-      "id": "inc-retry-email",
-      "name": "Increment Email Retry",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1400,
-        540
-      ]
+      "position": [1400, 340],
+      "onError": "oNode",
+      "continueOnFail": true
     },
     {
       "parameters": {
         "conditions": {
           "boolean": [
             {
-              "value1": "={{ $json.emailRetryCount <= 5 }}",
+              "value1": "={{ (() => {\n  const code = Number(\n    $json.statusCode ??\n    $json.httpCode ??\n    $json.errorDetails?.httpCode ??\n    $json.error?.statusCode ??\n    $json.error?.httpCode ??\n    0\n  );\n  const hasExplicitFailure = Boolean($json.errorMessage || $json.errorDescription || $json.errorDetails);\n  return hasExplicitFailure || [429,500,502,503,504].includes(code);\n})() }}",
+              "operation": "equal",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-email-retry-needed",
+      "name": "Email Retry Needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1600, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "const incident = $node['Validate & Normalize'].json;\n\nconst lastHttpCodeRaw =\n  $json?.errorDetails?.httpCode ??\n  $json?.httpCode ??\n  $json?.statusCode ??\n  $json?.error?.statusCode ??\n  $json?.error?.httpCode ??\n  null;\n\nconst lastHttpCode = lastHttpCodeRaw == null ? null : Number(lastHttpCodeRaw);\n\nreturn {\n  ...incident,\n  retryCount: 0,\n  // Deterministic retry counter when coming from error output\n  emailRetryCount: $runIndex + 1,\n  lastHttpCode\n};"
+      },
+      "id": "inc-retry-email",
+      "name": "Increment Email Retry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 540]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.emailRetryCount < 5 }}",
               "operation": "equal",
               "value2": true
             },
             {
-              "value1": "={{ [429, 500, 502, 503, 504].includes($node['Send Email'].json.statusCode) }}",
+              "value1": "={{ [429,500,502,503,504].includes(Number($json.lastHttpCode || 0)) }}",
               "operation": "equal",
               "value2": true
             }
@@ -216,50 +229,38 @@
       "name": "Retry Email?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [
-        1600,
-        540
-      ]
+      "position": [1600, 540]
     },
     {
       "parameters": {
-        "amount": 2,
+        "amount": "={{ Math.min(Math.pow(2, $json.emailRetryCount), 30) }}",
         "unit": "seconds"
       },
       "id": "wait-email",
       "name": "Wait Email",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1,
-      "position": [
-        1800,
-        540
-      ]
+      "position": [1800, 540]
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/processed_ids.log\\\"; $key = '{{ $node['Validate & Normalize'].json.dedupeKey }}'; Add-Content -Path $path -Value $key;\""
+        "command": "=node -e \"const fs=require('fs');const p=require('path');const dir='submission';if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const file=p.join(dir,'processed_ids.log');const key='{{ $node['Validate & Normalize'].json.dedupeKey }}';fs.appendFileSync(file,key+'\\n','utf8');\""
       },
       "id": "mark-processed",
       "name": "Mark Processed",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        1700,
-        340
-      ]
+      "position": [1700, 340]
     },
     {
       "parameters": {
-        "command": "=powershell -Command \"$dir = 'submission'; if (!(Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force }; $path = \\\"$dir/failures.json\\\"; if (!(Test-Path $path)) { '[]' | Out-File -FilePath $path -Encoding UTF8 }; [array]$data = @(Get-Content $path | ConvertFrom-Json); $newEntry = @{ incidentId = '{{ $node['Validate & Normalize'].json.incidentId }}'; error = '{{ $json.message || 'Unknown' }}'; timestamp = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ssZ') }; $data += $newEntry; $data | ConvertTo-Json | Out-File -FilePath $path -Encoding UTF8;\""
+        "command": "=node -e \"const fs=require('fs');const p=require('path');const dir='submission';if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const file=p.join(dir,'failures.json');let data=[];if(fs.existsSync(file)){try{const raw=fs.readFileSync(file,'utf8').trim();data=raw?JSON.parse(raw):[];}catch{data=[];}}if(!Array.isArray(data))data=[];data.push({incidentId:'{{ $node['Validate & Normalize'].json.incidentId }}',error:'Failed after max retries',timestamp:new Date().toISOString()});fs.writeFileSync(file,JSON.stringify(data,null,2));\""
       },
       "id": "log-failure",
       "name": "Persist Failure",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        1800,
-        740
-      ]
+      "position": [1800, 740]
     }
   ],
   "connections": {
@@ -268,8 +269,7 @@
         [
           {
             "node": "Validate & Normalize",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -279,8 +279,7 @@
         [
           {
             "node": "Check Deduplication",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -290,8 +289,7 @@
         [
           {
             "node": "Not Duplicate?",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -301,15 +299,13 @@
         [
           {
             "node": "Slack Notify",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ],
         [
           {
             "node": "Acknowledge Duplicate",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -318,9 +314,8 @@
       "main": [
         [
           {
-            "node": "Send Email",
-            "type": "main",
-            "index": 0
+            "node": "Slack Retry Needed?",
+            "type": "main"
           }
         ]
       ],
@@ -328,8 +323,23 @@
         [
           {
             "node": "Increment Retry",
-            "type": "main",
-            "index": 0
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Slack Retry Needed?": {
+      "main": [
+        [
+          {
+            "node": "Increment Retry",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "node": "Send Email",
+            "type": "main"
           }
         ]
       ]
@@ -339,8 +349,7 @@
         [
           {
             "node": "Retry Slack?",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -350,15 +359,13 @@
         [
           {
             "node": "Backoff Wait",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ],
         [
           {
             "node": "Persist Failure",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -368,8 +375,7 @@
         [
           {
             "node": "Slack Notify",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -378,9 +384,8 @@
       "main": [
         [
           {
-            "node": "Mark Processed",
-            "type": "main",
-            "index": 0
+            "node": "Email Retry Needed?",
+            "type": "main"
           }
         ]
       ],
@@ -388,8 +393,23 @@
         [
           {
             "node": "Increment Email Retry",
-            "type": "main",
-            "index": 0
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Email Retry Needed?": {
+      "main": [
+        [
+          {
+            "node": "Increment Email Retry",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "node": "Mark Processed",
+            "type": "main"
           }
         ]
       ]
@@ -399,8 +419,7 @@
         [
           {
             "node": "Retry Email?",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -410,15 +429,13 @@
         [
           {
             "node": "Wait Email",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ],
         [
           {
             "node": "Persist Failure",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
@@ -428,11 +445,18 @@
         [
           {
             "node": "Send Email",
-            "type": "main",
-            "index": 0
+            "type": "main"
           }
         ]
       ]
     }
-  }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "automated-test-id"
+  },
+  "versionId": "v1"
 }

@@ -40,6 +40,7 @@ graph TD
 ### Check Deduplication (Execute Command)
 - **Strategy**: Uses a flat-file check (`processed_ids.log`) instead of internal memory.
 - **Why**: This ensures idempotency works even when manually clicking "Execute Workflow" or restarting the n8n service.
+- **Portability**: Implemented via Node.js in `Execute Command` nodes (cross-platform), not PowerShell-specific scripting.
 
 ### Manual Retry Loop (IF + Wait)
 - **Circuit Breaker**: Uses a manual counter (`retryCount`) to prevent infinite loops.
@@ -64,7 +65,7 @@ graph TD
 ### Prerequisites
 - Node.js v18+
 - n8n (Local installation)
-- PowerShell (For filesystem-based state checks)
+- No OS-specific shell requirement (file persistence uses Node.js).
 
 ### Mock Servers
 1. Start the mock environment: `npm run mocks`
@@ -75,6 +76,23 @@ graph TD
 2. Send test payload via `curl.exe`:
 ```powershell
 curl.exe -X POST http://localhost:5678/webhook-test/incident -H \"Content-Type: application/json\" -d '{...}'
+```
+
+Alternatively (recommended on Windows/PowerShell), use `Invoke-RestMethod` to avoid JSON quoting issues:
+
+```powershell
+$body = @{
+  incidentId = "INC-DEMO-01"
+  severity = "P2"
+  title = "Demo"
+  createdAt = "2026-02-25T17:20:00Z"
+  ownerEmail = "oncall@example.com"
+} | ConvertTo-Json -Compress
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:5678/webhook-test/incident" `
+  -ContentType "application/json" `
+  -Body $body
 ```
 
 ---

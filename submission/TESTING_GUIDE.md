@@ -3,15 +3,20 @@
 This guide provides exact commands and expected results to verify the production-grade features of the Incident Workflow.
 
 ## 🧹 Initial Cleanup
+
 Reset your local environment by deleting only the temporary log files:
+
 ```powershell
 Remove-Item submission/processed_ids.log -ErrorAction SilentlyContinue
 Remove-Item submission/failures.json -ErrorAction SilentlyContinue
 ```
 
+> Tip (PowerShell): `curl.exe -d '{ ... }'` often breaks due to quoting. Prefer `Invoke-RestMethod` examples below.
+
 ---
 
 ## 🟢 Test Case 1: Standard Success (Clean Run)
+
 **Scenario:** A new incident is received, normalized, and both notifications are sent immediately.
 
 1.  **Reset Mocks** (Ensure no failures are injected):
@@ -34,11 +39,30 @@ Remove-Item submission/failures.json -ErrorAction SilentlyContinue
            \"ownerEmail\": \"hiring-manager@example.com\"
          }'
     ```
+
+    Or (recommended):
+
+    ```powershell
+    $body = @{
+      incidentId  = "INC-2026"
+      severity    = "P1"
+      title       = "Production Check"
+      description = "Systems are nominal"
+      createdAt   = "2026-02-25T17:20:00Z"
+      ownerEmail  = "hiring-manager@example.com"
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod -Method Post `
+      -Uri "http://localhost:5678/webhook-test/incident" `
+      -ContentType "application/json" `
+      -Body $body
+    ```
 4.  **Expected Result:** Every node in n8n turns **Green** instantly.
 
 ---
 
 ## 🆔 Test Case 2: Deduplication (Idempotency)
+
 **Scenario:** Re-sending the same incident should not trigger notifications.
 
 1.  Click **Execute Workflow** in n8n.
@@ -48,6 +72,7 @@ Remove-Item submission/failures.json -ErrorAction SilentlyContinue
 ---
 
 ## 🔄 Test Case 3: Slack Resilience (Rate Limiting)
+
 **Scenario:** The Slack API returns a 429 error, and the workflow waits and retries.
 
 1.  Restart the mock server with failure injection:
@@ -61,13 +86,31 @@ Remove-Item submission/failures.json -ErrorAction SilentlyContinue
     ```powershell
     curl.exe -X POST http://localhost:5678/webhook-test/incident `
          -H "Content-Type: application/json" `
-         -d '{ \"incidentId\": \"INC-SLACK-RETRY\", \"severity\": \"P2\", \"title\": \"Slack Retry Test\", \"createdAt\": \"2026-02-25T17:30:00Z\" }'
+         -d '{ \"incidentId\": \"INC-SLACK-RETRY\", \"severity\": \"P2\", \"title\": \"Slack Retry Test\", \"createdAt\": \"2026-02-25T17:30:00Z\", \"ownerEmail\": \"oncall@example.com\" }'
+    ```
+
+    Or (recommended):
+
+    ```powershell
+    $body = @{
+      incidentId = "INC-SLACK-RETRY"
+      severity   = "P2"
+      title      = "Slack Retry Test"
+      createdAt  = "2026-02-25T17:30:00Z"
+      ownerEmail = "oncall@example.com"
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod -Method Post `
+      -Uri "http://localhost:5678/webhook-test/incident" `
+      -ContentType "application/json" `
+      -Body $body
     ```
 4.  **Expected Result:** The workflow loops through **Backoff Wait** twice. The Slack node finally turns Green on the 3rd attempt.
 
 ---
 
 ## 📧 Test Case 4: Email Resilience (Server Errors)
+
 **Scenario:** The Microsoft Email API returns a 500 error, and the workflow waits and retries.
 
 1.  Restart the mock server with email failure injection:
@@ -81,13 +124,31 @@ Remove-Item submission/failures.json -ErrorAction SilentlyContinue
     ```powershell
     curl.exe -X POST http://localhost:5678/webhook-test/incident `
          -H "Content-Type: application/json" `
-         -d '{ \"incidentId\": \"INC-EMAIL-RETRY\", \"severity\": \"P2\", \"title\": \"Email Retry Test\", \"createdAt\": \"2026-02-25T17:35:00Z\" }'
+         -d '{ \"incidentId\": \"INC-EMAIL-RETRY\", \"severity\": \"P2\", \"title\": \"Email Retry Test\", \"createdAt\": \"2026-02-25T17:35:00Z\", \"ownerEmail\": \"oncall@example.com\" }'
+    ```
+
+    Or (recommended):
+
+    ```powershell
+    $body = @{
+      incidentId = "INC-EMAIL-RETRY"
+      severity   = "P2"
+      title      = "Email Retry Test"
+      createdAt  = "2026-02-25T17:35:00Z"
+      ownerEmail = "oncall@example.com"
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod -Method Post `
+      -Uri "http://localhost:5678/webhook-test/incident" `
+      -ContentType "application/json" `
+      -Body $body
     ```
 4.  **Expected Result:** The workflow survives the 500 error, waits, and succeeds on the 2nd attempt.
 
 ---
 
 ## 🔴 Test Case 5: Final Failure & Logging
+
 **Scenario:** The API fails consistently (500), and the workflow logs the failure for auditing.
 
 1.  Restart the mock server with 10 failures:
@@ -96,10 +157,33 @@ Remove-Item submission/failures.json -ErrorAction SilentlyContinue
     npm run mocks
     ```
 2.  Click **Execute Workflow** in n8n.
-3.  Send a **New Incident ID**:
+3.  Clear state files (prevents dedupe from skipping retries):
+    ```powershell
+    Remove-Item submission/processed_ids.log -ErrorAction SilentlyContinue
+    Remove-Item submission/failures.json -ErrorAction SilentlyContinue
+    ```
+4.  Send a **New Incident ID**:
     ```powershell
     curl.exe -X POST http://localhost:5678/webhook-test/incident `
          -H "Content-Type: application/json" `
-         -d '{ \"incidentId\": \"INC-FATAL-01\", \"severity\": \"P3\", \"title\": \"Fatal Error Test\", \"createdAt\": \"2026-02-25T17:40:00Z\" }'
+         -d '{ \"incidentId\": \"INC-FATAL-NEW\", \"severity\": \"P3\", \"title\": \"Fatal Error Test\", \"createdAt\": \"2026-02-25T17:40:00Z\", \"ownerEmail\": \"oncall@example.com\" }'
     ```
-4.  **Expected Result:** After 5 failed retry loops, the **Persist Failure** node logs the details to `submission/failures.json`.
+
+    Or (recommended):
+
+    ```powershell
+    $body = @{
+      incidentId = "INC-FATAL-NEW"
+      severity   = "P3"
+      title      = "Fatal Error Test"
+      createdAt  = "2026-02-25T17:40:00Z"
+      ownerEmail = "oncall@example.com"
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod -Method Post `
+      -Uri "http://localhost:5678/webhook-test/incident" `
+      -ContentType "application/json" `
+      -Body $body
+    ```
+
+5.  **Expected Result:** After 5 total failed attempts (initial + retries with backoff), the workflow routes to **Persist Failure** and logs details to `submission/failures.json`.
